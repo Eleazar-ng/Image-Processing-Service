@@ -1,0 +1,43 @@
+# Local development services. The application itself runs on the host
+# (pnpm start:dev); these containers provide its dependencies.
+#
+# Object storage is intentionally absent: the local S3 emulator is still to be
+# decided (MinIO's community edition is archived). It is needed from Stage 4.
+
+services:
+  postgres:
+    image: postgres:18-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_DB: ${POSTGRES_DB:-image_service}
+    ports:
+      - '${POSTGRES_PORT:-5430}:5432'
+    volumes:
+      # PostgreSQL 18+ images keep versioned data under /var/lib/postgresql.
+      - postgres_data:/var/lib/postgresql
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}']
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  redis:
+    image: redis:8-alpine
+    restart: unless-stopped
+    # Append-only persistence so queued jobs survive a restart.
+    command: ['redis-server', '--appendonly', 'yes']
+    ports:
+      - '${REDIS_PORT:-6377}:6379'
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  postgres_data:
+  redis_data:

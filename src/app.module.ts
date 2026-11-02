@@ -1,10 +1,15 @@
 import { Module } from '@nestjs/common';
+import { APP_FILTER } from '@nestjs/core';
+import { ProblemDetailsFilter } from './common/errors/problem-details.filter.js';
+import { AppLoggingModule } from './common/logging/logging.module.js';
+import { AppConfigModule } from './config/app-config.module.js';
+import { HealthModule } from './health/health.module.js';
 import { AppController } from './app.controller.js';
 import { AppService } from './app.service.js';
 
 @Module({
-  imports: [],
+  imports: [AppConfigModule, AppLoggingModule, HealthModule],
   controllers: [AppController],
-  providers: [AppService],
+  providers: [AppService, { provide: APP_FILTER, useClass: ProblemDetailsFilter }],
 })
 export class AppModule {}
