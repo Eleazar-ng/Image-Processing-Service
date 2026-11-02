@@ -19,7 +19,7 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v6
         with:
           # Pin to your local pnpm version once decided (or add a
           # "packageManager" field to package.json and remove this input).
