@@ -11,7 +11,7 @@ WORKDIR /app
 
 # --- deps: all dependencies, used for the build ------------------------------
 FROM base AS deps
-COPY package.json pnpm-lock.yaml .npmrc ./
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml .npmrc ./
 RUN pnpm install --frozen-lockfile
 
 # --- build: compile TypeScript -----------------------------------------------
@@ -21,7 +21,7 @@ RUN pnpm build
 
 # --- prod-deps: production dependencies only ---------------------------------
 FROM base AS prod-deps
-COPY package.json pnpm-lock.yaml .npmrc ./
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml .npmrc ./
 RUN pnpm install --frozen-lockfile --prod
 
 # --- runtime: minimal image; run as API or worker ----------------------------
