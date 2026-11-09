@@ -79,12 +79,28 @@ Made on 2026-11-01 after NestJS 12 (released 2026-08-27) and Node 26 LTS changed
 | D-035 | **Vitest** as the test runner (with `unplugin-swc` for decorator metadata). Testcontainers for integration tests is introduced in Stage 2, when there is a database to test against. Supersedes D-020's runner. | Jest | Accepted | 2026-11-01 |
 | D-036 | **TypeScript 6** (required as a peer by the Nest 12 schematics). TypeScript 7 is not usable with the Nest CLI yet. | TypeScript 5.x | Accepted | 2026-11-01 |
 | D-037 | **Single `src`, two entry points** (`main.ts`, `worker.ts`); `tsconfig.build.json` sets `rootDir` to `src` so output is `dist/main.js` and `dist/worker.js` | Nest monorepo mode | Accepted | 2026-11-01 |
-| D-038 | **URI versioning** with global prefix: routes under `/api/v1/...`. Liveness is unversioned at `GET /health/live` for probes. Readiness (`/health/ready`) is added as dependencies arrive. | Header versioning, none | Accepted | 2026-11-01 |
-| D-039 | **RFC 9457 Problem Details** (`application/problem+json`) for all errors, produced by one global exception filter. Responses include `requestId`. Unknown errors never leak internals. | Custom JSON shape | Accepted | 2026-11-01 |
-| D-040 | **Husky + lint-staged** pre-commit hook. Commitlint (enforcing Conventional Commits) is not yet confirmed. | | Accepted (commitlint pending) | 2026-11-01 |
+| D-038 | **URI versioning** with global prefix: routes under `/api/v1/...`. Health probes are unversioned and outside the prefix: `GET /health/live` (liveness) and, from Stage 2, `GET /health/ready` (readiness, PostgreSQL check). Redis and storage checks join readiness as those dependencies arrive. | Header versioning, none | Accepted | 2026-11-01 |
+| D-039 | **RFC 9457 Problem Details** (`application/problem+json`) for all errors, produced by one global exception filter. Responses include `requestId`. Unknown errors never leak internals. Request IDs are assigned by Fastify (`genReqId`, reusing a validated incoming `x-request-id`) and echoed by an `onRequest` hook, so they cover every route, including those outside the `/api` prefix where Nest middleware does not run. | Custom JSON shape | Accepted | 2026-11-01 |
+| D-040 | **Husky + lint-staged** pre-commit hook. Commitlint (enforcing Conventional Commits) is not yet confirmed. | | Accepted (commitlint added by D-051) | 2026-11-01 |
 | D-041 | **Multi-stage production Dockerfile**: one image runs the API (default) or the worker (`node dist/worker.js`). Node 25+ no longer bundles Corepack, so pnpm is installed with npm. | Defer the Dockerfile | Accepted | 2026-11-01 |
 | D-042 | **Dependabot** for npm, GitHub Actions, and Docker, grouped for Nest packages and dev dependencies | Renovate, none | Accepted | 2026-11-01 |
 | D-043 | **Local S3-compatible storage emulator: pending.** MinIO is no longer viable. Candidates: SeaweedFS (Apache-2.0, active), Garage (AGPL), S3Proxy (test-oriented), or a dedicated R2 dev bucket. Must be decided before Stage 4; it also affects integration tests. | | **Open** | |
+
+## 5c. Stage 2 decisions (database foundation)
+
+Approved on 2026-11-02 by accepting the recommendations as a group.
+
+| ID | Decision | Alternatives considered | Status | Date |
+|---|---|---|---|---|
+| D-044 | **Prisma 7 with the PostgreSQL driver adapter** (`@prisma/adapter-pg`). `prisma` and `@prisma/client` are installed as `@7` explicitly because the npm `latest` tag may point to a Prisma 8 pre-release. The connection URL lives in `prisma.config.ts`, read from `DATABASE_URL`. | | Accepted | 2026-11-02 |
+| D-045 | **Generated client is git-ignored** (`src/generated/prisma`) and produced by `pnpm db:generate`, which CI and the Dockerfile run before building | Commit the generated client | Accepted | 2026-11-02 |
+| D-046 | **Foreign-key behavior:** `RefreshToken` cascades from `User`; `ImageVariant` cascades from `Image`; `Image` to `User` is **Restrict** (no user-deletion feature yet, and silently deleting a user's images would be dangerous) | Cascade everywhere | Accepted | 2026-11-02 |
+| D-047 | **Emails are normalized to lowercase in the application** (implemented in Stage 3) with a plain unique index | PostgreSQL `citext` | Accepted | 2026-11-02 |
+| D-048 | **`timestamptz(3)` columns** for all timestamps | Prisma's default timestamp type | Accepted | 2026-11-02 |
+| D-049 | **`GET /health/ready`** with a database check, built as a custom indicator on Terminus's `HealthIndicatorService` with a 1 second timeout. Unversioned and outside the `/api` prefix. | Built-in `PrismaHealthIndicator` | Accepted | 2026-11-02 |
+| D-050 | **Testcontainers PostgreSQL**: one container per e2e run (Vitest global setup), committed migrations applied with `prisma migrate deploy`, tables truncated between tests; e2e files run serially because they share the database | Container per test file | Accepted | 2026-11-02 |
+| D-051 | **commitlint** with `@commitlint/config-conventional`, enforced by a Husky `commit-msg` hook | No enforcement | Accepted | 2026-11-02 |
+| D-052 | **Modeling detail (Claude's choice, to confirm):** `ImageVariant` output fields (`storageKey`, `mimeType`, `sizeBytes`, `width`, `height`) are nullable until the variant is `COMPLETED`, since a `PENDING` variant has no output yet. `Image.storageKey` and `ImageVariant.storageKey` are unique. Indexes: `Image(ownerId, createdAt)`, `Image(deletedAt)`, `ImageVariant(imageId)`, `ImageVariant(status, createdAt)`, `RefreshToken(userId)`, `(familyId)`, `(expiresAt)`. | Non-null output fields | Accepted (confirm) | 2026-11-02 |
 
 ## 6. Deferred and backlog items
 
@@ -100,14 +116,15 @@ Made on 2026-11-01 after NestJS 12 (released 2026-08-27) and Node 26 LTS changed
 - Deployment target and infrastructure (D-024)
 - Security headers (Helmet) and CORS policy
 - Trusted-proxy setting for client IP detection (needed with rate limiting, Stage 8)
-- Readiness endpoint `/health/ready` (as dependencies are added)
+- Redis and storage checks for `/health/ready` (as those dependencies are added)
 - Nest 12 `@nestjs/observe` SDK versus pino plus OpenTelemetry (D-023 stands for now)
 - Cleanup job for soft-deleted images and their R2 objects (D-028)
 
 ## 7. Open items to decide in the relevant stage
 
 - Local object storage emulator (D-043), before Stage 4
-- Whether to enforce Conventional Commits with commitlint (D-040)
+- How migrations are applied in deployment (the Prisma CLI is a dev dependency, so a deploy step or image variant is needed once hosting is planned)
+- Whether the installed Prisma 7 release expects a differently named config file (D-044); verify with `pnpm prisma init`
 - Pin the pnpm version (add a `packageManager` field or set it in CI and the Dockerfile)
 - Exact shape of validation errors returned by `StandardSchemaValidationPipe`, to be mapped into Problem Details when the first endpoints with bodies exist (Stage 3)
 - Exact access and refresh token lifetimes (Stage 3)

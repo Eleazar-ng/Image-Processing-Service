@@ -33,6 +33,18 @@ describe('App (e2e)', () => {
     });
   });
 
+  describe('GET /health/ready', () => {
+    it('reports the database as up', async () => {
+      const res = await app.inject({ method: 'GET', url: '/health/ready' });
+
+      expect(res.statusCode).toBe(200);
+      expect(res.json()).toMatchObject({
+        status: 'ok',
+        info: { database: { status: 'up' } },
+      });
+    });
+  });
+
   describe('request IDs', () => {
     it('echoes a well-formed incoming request ID', async () => {
       const res = await app.inject({
@@ -94,7 +106,9 @@ describe('App (e2e)', () => {
 
       expect(res.statusCode).toBe(200);
       expect(doc.openapi).toMatch(/^3\./);
-      expect(Object.keys(doc.paths)).toContain('/health/live');
+      expect(Object.keys(doc.paths)).toEqual(
+        expect.arrayContaining(['/health/live', '/health/ready']),
+      );
     });
   });
 });

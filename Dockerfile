@@ -14,9 +14,12 @@ FROM base AS deps
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml .npmrc ./
 RUN pnpm install --frozen-lockfile
 
-# --- build: compile TypeScript -----------------------------------------------
+# --- build: generate the Prisma client, then compile TypeScript --------------
 FROM deps AS build
 COPY . .
+# Prisma loads its config (which reads DATABASE_URL) even to generate the
+# client; a placeholder is enough because nothing connects.
+RUN DATABASE_URL=postgresql://placeholder:placeholder@localhost:5432/placeholder pnpm db:generate
 RUN pnpm build
 
 # --- prod-deps: production dependencies only ---------------------------------

@@ -16,6 +16,10 @@ jobs:
   check:
     name: Lint, typecheck, test, build
     runs-on: ubuntu-latest
+    env:
+      # Placeholder so Prisma can load its config. Nothing connects to it;
+      # e2e tests start their own PostgreSQL through Testcontainers.
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/image_service
     steps:
       - uses: actions/checkout@v5
 
@@ -31,6 +35,7 @@ jobs:
           cache: pnpm
 
       - run: pnpm install --frozen-lockfile
+      - run: pnpm db:generate
       - run: pnpm lint
       - run: pnpm typecheck
       - run: pnpm test

@@ -7,8 +7,8 @@ Sub-stages are proposed where a stage is large. The roadmap is a proposal that c
 | Stage | Name | Status |
 |---|---|---|
 | 0 | Architecture and foundations | Complete |
-| 1 | Project scaffolding and tooling | In review |
-| 2 | Database foundation | Not started |
+| 1 | Project scaffolding and tooling | Complete |
+| 2 | Database foundation | In review |
 | 3 | Authentication and roles | Not started |
 | 4 | Storage and upload | Not started |
 | 5 | Retrieval, listing, and admin | Not started |
@@ -36,9 +36,12 @@ Stack, infrastructure, and behavior decisions; architecture; data model; API sur
 
 ## Stage 2: Database foundation
 
-- Prisma setup and Prisma module
+- Prisma 7 setup with the PostgreSQL driver adapter, Prisma module and service
 - Initial schema (User, RefreshToken, Image, ImageVariant) and first migration
-- Seed infrastructure
+- Testcontainers PostgreSQL for e2e and database tests
+- `GET /health/ready` with a database check
+- Seed runner skeleton (the admin seeder arrives in Stage 3)
+- commitlint (carried over from Stage 1)
 
 ## Stage 3: Authentication and roles
 

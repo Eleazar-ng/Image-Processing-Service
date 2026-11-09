@@ -55,14 +55,16 @@ All IDs are cuid (D-025).
 
 | Model | Key fields |
 |---|---|
-| **User** | id, email (unique), passwordHash, role (`USER` / `ADMIN`), createdAt, updatedAt |
+| **User** | id, email (unique, stored lowercase), passwordHash, role (`USER` / `ADMIN`), createdAt, updatedAt |
 | **RefreshToken** | id, userId, tokenHash, familyId, expiresAt, revokedAt, createdAt |
 | **Image** | id, ownerId, originalFilename, storageKey, mimeType, sizeBytes, width, height, checksum (SHA-256), createdAt, deletedAt |
-| **ImageVariant** | id, imageId, cacheKey (unique), operations (JSON), storageKey, mimeType, sizeBytes, width, height, status (`PENDING` / `PROCESSING` / `COMPLETED` / `FAILED`), error, createdAt, completedAt |
+| **ImageVariant** | id, imageId, cacheKey (unique), operations (JSON), storageKey (unique), mimeType, sizeBytes, width, height (output fields empty until `COMPLETED`), status (`PENDING` / `PROCESSING` / `COMPLETED` / `FAILED`), error, createdAt, completedAt |
 
 Notes:
 - `deletedAt` implements soft delete (D-028). Variants of a soft-deleted image are treated as deleted and removed by the cleanup job.
 - Whether admin actions get a dedicated audit table is still open (see the Decision Log).
+- All timestamps are `timestamptz(3)` (D-048). Deleting a `User` cascades to their `RefreshToken`s but is blocked while they own `Image`s; deleting an `Image` cascades to its `ImageVariant`s (D-046).
+- The schema lives in `prisma/schema.prisma`; the generated client is not committed (D-045).
 
 ## 4. API surface (draft, versioned prefix `/api/v1`, final naming to be confirmed)
 
@@ -89,7 +91,7 @@ Notes:
 - `/admin/*` routes to list and view all images and soft-delete them. Exact routes to be defined in Stage 5.
 
 ### Operations
-- `GET /health/live`: liveness, unversioned and outside the `/api` prefix (D-038). `GET /health/ready` is added as dependencies arrive.
+- `GET /health/live`: liveness. `GET /health/ready`: readiness, checks PostgreSQL (Redis and storage join later). Both are unversioned and outside the `/api` prefix (D-038, D-049).
 
 ## 5. Cross-cutting concerns
 
@@ -101,6 +103,6 @@ Notes:
 | **Errors** | RFC 9457 Problem Details through one global exception filter (D-039) |
 | **Logging** | `nestjs-pino`, correlation IDs, health checks via Terminus (D-023) |
 | **Docs** | Swagger/OpenAPI (D-022) |
-| **Testing** | Vitest, unit plus e2e; Testcontainers for integration tests from Stage 2 (D-035) |
+| **Testing** | Vitest, unit plus e2e; Testcontainers PostgreSQL for e2e and database tests (D-035, D-050) |
 | **Local dev and CI** | Docker Compose (PostgreSQL, Redis; storage emulator pending); GitHub Actions (D-021) |
 | **Security** | Argon2id, hashed refresh tokens, content-based upload validation, pixel ceiling, owner-scoped queries, admin routes isolated |

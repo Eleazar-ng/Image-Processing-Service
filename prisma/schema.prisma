@@ -1,0 +1,101 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Get a free hosted Postgres database in seconds: `npx create-db`
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum Role {
+  USER
+  ADMIN
+}
+
+enum VariantStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+}
+
+model User {
+  id           String   @id @default(cuid())
+  // Stored lowercase: the application normalizes before writing (Stage 3).
+  email        String   @unique
+  passwordHash String
+  role         Role     @default(USER)
+  createdAt    DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt    DateTime @updatedAt @db.Timestamptz(3)
+
+  images        Image[]
+  refreshTokens RefreshToken[]
+}
+
+model RefreshToken {
+  id        String    @id @default(cuid())
+  userId    String
+  tokenHash String    @unique
+  // Tokens issued from one login share a family, so reuse of a rotated token
+  // can revoke the whole family.
+  familyId  String
+  expiresAt DateTime  @db.Timestamptz(3)
+  revokedAt DateTime? @db.Timestamptz(3)
+  createdAt DateTime  @default(now()) @db.Timestamptz(3)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([familyId])
+  @@index([expiresAt])
+}
+
+model Image {
+  id               String    @id @default(cuid())
+  ownerId          String
+  originalFilename String
+  storageKey       String    @unique
+  mimeType         String
+  sizeBytes        Int
+  width            Int
+  height           Int
+  // SHA-256 of the original file.
+  checksum         String
+  createdAt        DateTime  @default(now()) @db.Timestamptz(3)
+  // Soft delete: a cleanup job removes rows and storage objects later.
+  deletedAt        DateTime? @db.Timestamptz(3)
+
+  owner    User           @relation(fields: [ownerId], references: [id], onDelete: Restrict)
+  variants ImageVariant[]
+
+  @@index([ownerId, createdAt])
+  @@index([deletedAt])
+}
+
+model ImageVariant {
+  id          String        @id @default(cuid())
+  imageId     String
+  // Deterministic hash of the source image and normalized operations.
+  cacheKey    String        @unique
+  operations  Json
+  // Output fields are empty until the variant is COMPLETED.
+  storageKey  String?       @unique
+  mimeType    String?
+  sizeBytes   Int?
+  width       Int?
+  height      Int?
+  status      VariantStatus @default(PENDING)
+  error       String?
+  createdAt   DateTime      @default(now()) @db.Timestamptz(3)
+  completedAt DateTime?     @db.Timestamptz(3)
+
+  image Image @relation(fields: [imageId], references: [id], onDelete: Cascade)
+
+  @@index([imageId])
+  @@index([status, createdAt])
+}
