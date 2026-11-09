@@ -52,9 +52,12 @@ export function configureApp(app: NestFastifyApplication): void {
     done();
   });
 
-  // Routes live under /api/v1/...; liveness stays unversioned for probes.
+  // Routes live under /api/v1/...; health probes stay unversioned.
   app.setGlobalPrefix(API_PREFIX, {
-    exclude: [{ path: 'health/live', method: RequestMethod.GET }],
+    exclude: [
+      { path: 'health/live', method: RequestMethod.GET },
+      { path: 'health/ready', method: RequestMethod.GET },
+    ],
   });
   app.enableVersioning({
     type: VersioningType.URI,
