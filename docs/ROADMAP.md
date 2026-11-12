@@ -8,8 +8,8 @@ Sub-stages are proposed where a stage is large. The roadmap is a proposal that c
 |---|---|---|
 | 0 | Architecture and foundations | Complete |
 | 1 | Project scaffolding and tooling | Complete |
-| 2 | Database foundation | In review |
-| 3 | Authentication and roles | Not started |
+| 2 | Database foundation | Complete |
+| 3 | Authentication and roles | In review |
 | 4 | Storage and upload | Not started |
 | 5 | Retrieval, listing, and admin | Not started |
 | 6 | Transformation engine | Not started |
@@ -45,12 +45,12 @@ Stack, infrastructure, and behavior decisions; architecture; data model; API sur
 
 ## Stage 3: Authentication and roles
 
-- Register and login, Argon2id hashing
-- Access and refresh tokens with rotation and reuse detection
-- JWT guard and role guard (`USER` / `ADMIN`)
-- Admin seed script
-- Rate limiting on auth routes (basic)
-- Decide: token lifetimes, endpoint naming, admin audit approach
+- Register, login, refresh, logout, and `GET /auth/me`; Argon2id hashing
+- Access JWT plus rotating opaque refresh tokens with reuse detection
+- Global JWT guard with `@Public()`, role guard with `@Roles()`, `@CurrentUser()`
+- Admin seed script (environment-driven, idempotent)
+- Zod request schemas, stable error codes, validation errors in Problem Details
+- Rate limiting on auth routes moves to Stage 8; the admin audit approach is decided in Stage 5
 
 ## Stage 4: Storage and upload
 
@@ -88,7 +88,7 @@ Stack, infrastructure, and behavior decisions; architecture; data model; API sur
 
 - Redis lookup and short-lived locks for duplicate requests
 - HTTP caching headers (`Cache-Control`, `ETag`)
-- Tiered, Redis-backed rate limits with stricter transformation limits
+- Tiered, Redis-backed rate limits with stricter limits on transformation and authentication routes (login, register, refresh)
 - Decide: rate-limit values
 
 ## Stage 9: Hardening

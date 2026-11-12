@@ -2,7 +2,6 @@ import { defineConfig } from 'vitest/config';
 import swc from 'unplugin-swc';
 
 export default defineConfig({
-  resolve: { tsconfigPaths: true },
   test: {
     globals: true,
     environment: 'node',
@@ -16,6 +15,7 @@ export default defineConfig({
       NODE_ENV: 'test',
       LOG_LEVEL: 'silent',
       SWAGGER_ENABLED: 'true',
+      JWT_ACCESS_SECRET: 'e2e-only-secret-with-at-least-32-characters',
     },
   },
   plugins: [swc.vite({ module: { type: 'es6' } })],

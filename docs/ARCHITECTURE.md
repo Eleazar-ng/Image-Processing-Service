@@ -45,9 +45,13 @@ Auth, Users, Images, Transformations, Storage, Jobs, Cache, Health, Config. An A
 
 ### Authentication (D-012, D-013)
 
-- Register and login issue a short-lived access JWT and a rotating refresh token.
-- Refresh tokens are stored hashed with a family ID. Reuse of a rotated token revokes the whole family.
-- Passwords are hashed with Argon2id.
+- **Register and login** return the public user profile plus an access JWT (HS256, 15 minutes, claims `sub` and `role`) and an opaque refresh token (7 days). Registration always creates a `USER`.
+- **Refresh tokens** are random 256-bit values; only their SHA-256 hash is stored. Each login starts a *family*; every refresh revokes the presented token and issues a new one in the same family.
+- **Reuse detection:** presenting a revoked token (a replay) revokes the whole family. Of two concurrent uses of one token, a conditional update lets one win and the other revokes the family.
+- **Logout** revokes the family that owns the presented refresh token. It is idempotent and needs no access token.
+- **Passwords** are hashed with Argon2id (19 MiB, 2 iterations, 1 lane). Login for an unknown email verifies against a dummy hash, so it takes comparable time and returns the same error as a wrong password.
+- **Guards:** `JwtAuthGuard` is global and protects every route unless marked `@Public()`; `RolesGuard` then enforces `@Roles()`. The role comes from the access token claim (D-058).
+- **Admins** exist only through the seed script, which reads `ADMIN_EMAIL` and `ADMIN_PASSWORD` from the environment.
 
 ## 3. Data model (Prisma, draft)
 
@@ -73,6 +77,9 @@ Notes:
 - `POST /auth/login`
 - `POST /auth/refresh`
 - `POST /auth/logout`
+- `GET /auth/me` (requires a valid access token)
+
+All other routes require an access token unless explicitly public. Health probes are public.
 
 ### Images (owner-scoped)
 - `POST /images`: multipart upload

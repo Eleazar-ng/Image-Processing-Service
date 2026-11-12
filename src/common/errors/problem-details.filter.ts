@@ -8,7 +8,6 @@ import {
 import { HttpAdapterHost } from '@nestjs/core';
 import type { FastifyReply, FastifyRequest } from 'fastify';
 import { PinoLogger } from 'nestjs-pino';
-import { REQUEST_ID_HEADER } from '../logging/request-id.js';
 
 /** RFC 9457 Problem Details, plus a request ID and optional extensions. */
 export interface ProblemDetails {
@@ -38,7 +37,7 @@ export class ProblemDetailsFilter implements ExceptionFilter {
     const request = ctx.getRequest<FastifyRequest>();
     const reply = ctx.getResponse<FastifyReply>();
 
-    const problem = this.toProblem(exception, request, reply);
+    const problem = this.toProblem(exception, request);
 
     if (problem.status >= 500) {
       this.logger.error({ err: exception }, 'Unhandled exception');
@@ -52,10 +51,10 @@ export class ProblemDetailsFilter implements ExceptionFilter {
   private toProblem(
     exception: unknown,
     request: FastifyRequest,
-    reply: FastifyReply,
   ): ProblemDetails {
-    const header = reply.raw.getHeader(REQUEST_ID_HEADER);
-    const requestId = typeof header === 'string' ? header : String(request.id);
+    // Fastify assigns the request ID (see createFastifyAdapter), so it is
+    // available even when logging middleware did not run for this route.
+    const requestId = request.id;
     const instance = request.url;
 
     if (exception instanceof HttpException) {
@@ -72,15 +71,23 @@ export class ProblemDetailsFilter implements ExceptionFilter {
       if (typeof body === 'string') {
         problem.detail = body;
       } else if (typeof body === 'object') {
-        const { message, errorCode } = body as {
+        const { message, errorCode, errors, issues } = body as {
           message?: unknown;
           errorCode?: unknown;
+          errors?: unknown;
+          issues?: unknown;
         };
         if (typeof message === 'string') {
           problem.detail = message;
-        } else if (Array.isArray(message)) {
-          problem.detail = 'Request validation failed.';
-          problem.errors = message;
+        }
+        // Validation pipes report per-field problems as an array, under
+        // `errors`, `issues`, or as an array `message`.
+        const list = [errors, issues, message].find(
+          (value): value is unknown[] => Array.isArray(value),
+        );
+        if (list) {
+          problem.detail ??= 'Request validation failed.';
+          problem.errors = list;
         }
         if (typeof errorCode === 'string') {
           problem.errorCode = errorCode;

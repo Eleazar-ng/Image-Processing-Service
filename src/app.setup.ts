@@ -30,7 +30,7 @@ export const DEFAULT_API_VERSION = '1';
 export function createFastifyAdapter(): FastifyAdapter {
   return new FastifyAdapter({
     requestIdHeader: false,
-    genReqId: (req:IncomingMessage) => resolveRequestId(req),
+    genReqId: (req: IncomingMessage) => resolveRequestId(req),
   });
 }
 
