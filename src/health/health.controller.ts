@@ -1,8 +1,10 @@
 import { Controller, Get, VERSION_NEUTRAL } from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { HealthCheck, HealthCheckService } from '@nestjs/terminus';
+import { Public } from '../auth/decorators/public.decorator.js';
 import { DatabaseHealthIndicator } from './database.health.js';
 
+@Public()
 @ApiTags('health')
 @Controller({ path: 'health', version: VERSION_NEUTRAL })
 export class HealthController {

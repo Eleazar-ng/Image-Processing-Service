@@ -1,14 +1,10 @@
 import 'dotenv/config';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { PrismaClient } from '../src/generated/prisma/client.js';
+import { adminSeeder } from './seeders/admin.seeder.js';
+import type { Seeder } from './seeders/seeder.js';
 
-interface Seeder {
-  name: string;
-  run: (prisma: PrismaClient) => Promise<void>;
-}
-
-// Stage 3 registers the admin seeder here, once password hashing exists.
-const seeders: Seeder[] = [];
+const seeders: Seeder[] = [adminSeeder];
 
 async function main(): Promise<void> {
   const connectionString = process.env.DATABASE_URL;

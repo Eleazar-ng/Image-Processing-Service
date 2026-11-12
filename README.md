@@ -26,7 +26,8 @@ Install current versions once, then commit the generated `pnpm-lock.yaml`:
 # Runtime dependencies
 pnpm add @nestjs/common @nestjs/core @nestjs/platform-fastify @nestjs/config \
   @nestjs/swagger @nestjs/terminus fastify @fastify/static nestjs-pino pino \
-  pino-http reflect-metadata rxjs "zod@^4.2" "@prisma/client@7" @prisma/adapter-pg
+  pino-http reflect-metadata rxjs "zod@^4.2" "@prisma/client@7" @prisma/adapter-pg \
+  @nestjs/jwt @node-rs/argon2
 
 # Development dependencies
 pnpm add -D @nestjs/cli @nestjs/schematics @nestjs/testing "typescript@^6" \
@@ -49,7 +50,7 @@ Notes:
 Then set up the environment and database:
 
 ```bash
-cp .env.example .env
+cp .env.example .env              # then set JWT_ACCESS_SECRET (see Authentication)
 docker compose up -d              # PostgreSQL and Redis
 pnpm db:generate                  # generate the Prisma client (src/generated, git-ignored)
 pnpm db:migrate:dev --name init   # FIRST TIME ONLY: creates prisma/migrations/, commit it
@@ -66,6 +67,31 @@ curl http://localhost:3000/health/ready   # database reachable
 
 Swagger UI is at <http://localhost:3000/docs> and the OpenAPI document at
 <http://localhost:3000/docs-json>.
+
+## Authentication
+
+- Set `JWT_ACCESS_SECRET` in `.env` to a random value of at least 32 characters
+  (`openssl rand -base64 48`). The app refuses to start without it.
+- Access tokens last 15 minutes and refresh tokens 7 days
+  (`ACCESS_TOKEN_TTL_SECONDS`, `REFRESH_TOKEN_TTL_SECONDS`).
+- Every route requires `Authorization: Bearer <access token>` unless it is marked
+  `@Public()`. Health probes and the auth routes (except `GET /auth/me`) are public.
+- Admins cannot be created through the API. Create the first one with the seed
+  script, passing credentials through the environment:
+
+```bash
+ADMIN_EMAIL=admin@example.com ADMIN_PASSWORD='a-strong-password-12+' pnpm db:seed
+```
+
+  Re-running it is safe: an existing admin is left alone and its password is never reset.
+
+Try it:
+
+```bash
+curl -s -X POST http://localhost:3000/api/v1/auth/register \
+  -H 'content-type: application/json' \
+  -d '{"email":"you@example.com","password":"a-long-password-123"}'
+```
 
 ## Database workflow
 
@@ -106,7 +132,8 @@ Commit the generated files in `prisma/migrations/`. Prisma's configuration is in
 prisma/
   schema.prisma        Database schema
   migrations/          Committed SQL migrations
-  seed.ts              Seed runner (admin seeder arrives in Stage 3)
+  seed.ts              Seed runner
+  seeders/             Individual seeders (admin user)
 prisma.config.ts       Prisma configuration (connection URL, migrations, seed)
 src/
   main.ts              API entry point
@@ -117,6 +144,8 @@ src/
   config/              Zod-validated environment configuration
   common/              Logging, error handling, Swagger setup
   health/              Liveness and readiness endpoints
+  auth/                Registration, login, tokens, guards, decorators
+  users/               User lookup and creation
   prisma/              PrismaService and PrismaModule
   generated/prisma/    Generated Prisma client (git-ignored)
 test/
@@ -125,15 +154,19 @@ test/
 docs/                  Decision log, architecture, roadmap
 ```
 
-## Endpoints (Stage 2)
+## Endpoints (Stage 3)
 
-| Method | Path            | Description                                  |
-| ------ | --------------- | -------------------------------------------- |
-| GET    | `/health/live`  | Liveness probe (unversioned)                 |
-| GET    | `/health/ready` | Readiness probe: checks the database (unversioned) |
+| Method | Path                    | Auth   | Description                                      |
+| ------ | ----------------------- | ------ | ------------------------------------------------ |
+| GET    | `/health/live`          | Public | Liveness probe (unversioned)                     |
+| GET    | `/health/ready`         | Public | Readiness probe: checks the database             |
+| POST   | `/api/v1/auth/register` | Public | Create an account and sign in                    |
+| POST   | `/api/v1/auth/login`    | Public | Sign in                                          |
+| POST   | `/api/v1/auth/refresh`  | Public | Rotate the refresh token, get a new access token |
+| POST   | `/api/v1/auth/logout`   | Public | End the session that owns a refresh token        |
+| GET    | `/api/v1/auth/me`       | Bearer | The signed-in user                               |
 
-Application routes will live under `/api/v1/...`. Errors use RFC 9457
-`application/problem+json`.
+Errors use RFC 9457 `application/problem+json` with a stable `errorCode`.
 
 ## Notes
 

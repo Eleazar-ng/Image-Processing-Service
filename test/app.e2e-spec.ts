@@ -102,7 +102,10 @@ describe('App (e2e)', () => {
   describe('OpenAPI', () => {
     it('serves the OpenAPI document', async () => {
       const res = await app.inject({ method: 'GET', url: '/docs-json' });
-      const doc = res.json<{ openapi: string; paths: Record<string, unknown> }>();
+      const doc = res.json<{
+        openapi: string;
+        paths: Record<string, unknown>;
+      }>();
 
       expect(res.statusCode).toBe(200);
       expect(doc.openapi).toMatch(/^3\./);
