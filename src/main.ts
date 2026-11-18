@@ -1,22 +1,19 @@
 import { ConfigService } from '@nestjs/config';
 import { NestFactory } from '@nestjs/core';
-import {
-  FastifyAdapter,
-  type NestFastifyApplication,
-} from '@nestjs/platform-fastify';
+import type { NestFastifyApplication } from '@nestjs/platform-fastify';
 import { Logger } from 'nestjs-pino';
 import { AppModule } from './app.module.js';
-import { configureApp } from './app.setup.js';
+import { configureApp, createFastifyAdapter } from './app.setup.js';
 import type { Env } from './config/env.schema.js';
 
 async function bootstrap(): Promise<void> {
   const app = await NestFactory.create<NestFastifyApplication>(
     AppModule,
-    new FastifyAdapter(),
+    createFastifyAdapter(),
     { bufferLogs: true },
   );
 
-  configureApp(app);
+  await configureApp(app);
 
   const config = app.get<ConfigService<Env, true>>(ConfigService);
   const port = config.get('PORT', { infer: true });

@@ -38,6 +38,22 @@ services:
       timeout: 3s
       retries: 10
 
+  # S3-compatible object storage standing in for Cloudflare R2. SeaweedFS in its
+  # single-process mode serves the S3 API on 8333 and creates the bucket at start.
+  # Pin the tag to a tested release once you have one.
+  storage:
+    image: chrislusf/seaweedfs:latest
+    restart: unless-stopped
+    environment:
+      AWS_ACCESS_KEY_ID: ${STORAGE_ACCESS_KEY_ID:-dev-access-key}
+      AWS_SECRET_ACCESS_KEY: ${STORAGE_SECRET_ACCESS_KEY:-xqIiNAYZgGlj0xgkIYHbTl1P3q1NEX6an1spsZzLul0u8yLHnd}
+      S3_BUCKET: ${STORAGE_BUCKET:-images}
+    ports:
+      - '${STORAGE_PORT:-8333}:8333'
+    volumes:
+      - storage_data:/data
+
 volumes:
   postgres_data:
   redis_data:
+  storage_data:

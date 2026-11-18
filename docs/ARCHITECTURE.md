@@ -14,7 +14,7 @@ A backend service where authenticated users upload images, apply transformations
 | **Worker app** | NestJS standalone + BullMQ (D-011) | Runs queued transformation jobs with Sharp; can be scaled independently |
 | **PostgreSQL** | Prisma (D-004, D-005) | Users, refresh tokens, images, image variants |
 | **Redis** | (D-010) | BullMQ backend, cache lookups and locks, rate-limit counters |
-| **Object storage** | Cloudflare R2 via S3 API; local emulator to be decided (D-007, D-043) | Original images and derived variants |
+| **Object storage** | Cloudflare R2 via S3 API; SeaweedFS locally (D-007, D-065) | Original images and derived variants |
 
 ### API app modules
 
@@ -22,14 +22,16 @@ Auth, Users, Images, Transformations, Storage, Jobs, Cache, Health, Config. An A
 
 ## 2. Key flows
 
-### Upload (D-008, D-026, D-027)
+### Upload (D-008, D-026, D-027, D-067 to D-072)
 
-1. Client sends a multipart request with a JWT.
-2. The API checks authentication and rate limits, then enforces the 10 MB limit.
-3. The file's real content is inspected with Sharp: format must be in the allowed list, and the pixel count must be under the ceiling.
-4. The original is stored untouched in R2.
-5. An `Image` record is saved in PostgreSQL.
-6. Metadata (dimensions, format, size) is returned. Raw EXIF is not exposed (D-029).
+No queue is involved: the request completes inline.
+
+1. The client sends `POST /api/v1/images` as multipart with a bearer token, the image in the form field `file`.
+2. The global guard authenticates the caller. The multipart parser enforces the 10 MiB limit while streaming, so an oversized file is cut off early (`413 FILE_TOO_LARGE`).
+3. The file is buffered and inspected with Sharp **by its real content**: the format must be on the allowlist (`415 UNSUPPORTED_IMAGE_FORMAT` otherwise), the pixel count at most 50 million, and the image must decode fully (`422 INVALID_IMAGE` otherwise). The client's filename and declared type are ignored.
+4. The original is stored untouched in R2 under `users/{userId}/images/{uuid}.{ext}`.
+5. An `Image` record is saved with the sanitized filename, detected MIME type, size, as-displayed dimensions, and SHA-256 checksum. If this fails, the stored object is deleted again.
+6. The metadata is returned (never the storage key or owner). Raw EXIF is not exposed (D-029).
 
 ### Transform (D-009, D-016, D-030)
 
@@ -82,7 +84,7 @@ Notes:
 All other routes require an access token unless explicitly public. Health probes are public.
 
 ### Images (owner-scoped)
-- `POST /images`: multipart upload
+- `POST /images`: multipart upload, field `file` (implemented)
 - `GET /images`: paginated list with metadata
 - `GET /images/:id`: metadata
 - `GET /images/:id/file`: retrieve the original
@@ -111,5 +113,5 @@ All other routes require an access token unless explicitly public. Health probes
 | **Logging** | `nestjs-pino`, correlation IDs, health checks via Terminus (D-023) |
 | **Docs** | Swagger/OpenAPI (D-022) |
 | **Testing** | Vitest, unit plus e2e; Testcontainers PostgreSQL for e2e and database tests (D-035, D-050) |
-| **Local dev and CI** | Docker Compose (PostgreSQL, Redis; storage emulator pending); GitHub Actions (D-021) |
+| **Local dev and CI** | Docker Compose (PostgreSQL, Redis, SeaweedFS); GitHub Actions (D-021) |
 | **Security** | Argon2id, hashed refresh tokens, content-based upload validation, pixel ceiling, owner-scoped queries, admin routes isolated |
