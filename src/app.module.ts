@@ -5,11 +5,18 @@ import { AppLoggingModule } from './common/logging/logging.module.js';
 import { AppConfigModule } from './config/app-config.module.js';
 import { AuthModule } from './auth/auth.module.js';
 import { HealthModule } from './health/health.module.js';
+import { ImagesModule } from './images/images.module.js';
 import { AppController } from './app.controller.js';
 import { AppService } from './app.service.js';
 
 @Module({
-  imports: [AppConfigModule, AppLoggingModule, AuthModule, HealthModule],
+  imports: [
+    AppConfigModule,
+    AppLoggingModule,
+    AuthModule,
+    HealthModule,
+    ImagesModule,
+  ],
   controllers: [AppController],
   providers: [
     AppService,

@@ -1,8 +1,14 @@
 import { envSchema } from './env.schema.js';
 
-const DATABASE_URL = 'postgresql://user:pass@localhost:5432/db?schema=public';
+const DATABASE_URL = 'postgresql://user:pass@localhost:5430/db?schema=public';
 const JWT_ACCESS_SECRET = 'a-secret-that-is-at-least-32-characters-long';
-const required = { DATABASE_URL, JWT_ACCESS_SECRET };
+const storage = {
+  STORAGE_ENDPOINT: 'http://localhost:8333',
+  STORAGE_BUCKET: 'images',
+  STORAGE_ACCESS_KEY_ID: 'access-key',
+  STORAGE_SECRET_ACCESS_KEY: 'secret-key',
+};
+const required = { DATABASE_URL, JWT_ACCESS_SECRET, ...storage };
 
 describe('envSchema', () => {
   it('applies defaults when only the required variables are set', () => {
@@ -15,14 +21,19 @@ describe('envSchema', () => {
       JWT_ACCESS_SECRET,
       ACCESS_TOKEN_TTL_SECONDS: 900,
       REFRESH_TOKEN_TTL_SECONDS: 604_800,
+      ...storage,
+      STORAGE_REGION: 'auto',
+      STORAGE_FORCE_PATH_STYLE: true,
       DATABASE_URL,
     });
   });
 
-  it('requires DATABASE_URL and JWT_ACCESS_SECRET', () => {
+  it('requires every mandatory variable', () => {
     expect(envSchema.safeParse({}).success).toBe(false);
-    expect(envSchema.safeParse({ DATABASE_URL }).success).toBe(false);
-    expect(envSchema.safeParse({ JWT_ACCESS_SECRET }).success).toBe(false);
+    for (const key of Object.keys(required)) {
+      const { [key as keyof typeof required]: _omitted, ...rest } = required;
+      expect(envSchema.safeParse(rest).success, `missing ${key}`).toBe(false);
+    }
   });
 
   it('rejects a JWT_ACCESS_SECRET shorter than 32 characters', () => {
@@ -66,6 +77,39 @@ describe('envSchema', () => {
         ...required,
         DATABASE_URL: 'mysql://u:p@localhost/db',
       }).success,
+    ).toBe(false);
+  });
+
+  it('requires STORAGE_ENDPOINT to be a URL', () => {
+    expect(
+      envSchema.safeParse({ ...required, STORAGE_ENDPOINT: 'not a url' })
+        .success,
+    ).toBe(false);
+    expect(
+      envSchema.safeParse({
+        ...required,
+        STORAGE_ENDPOINT: 'https://abc123.r2.cloudflarestorage.com',
+      }).success,
+    ).toBe(true);
+  });
+
+  it('validates STORAGE_BUCKET as a bucket name', () => {
+    for (const bad of ['UPPER', 'a', 'has space', '-leading', 'trailing-']) {
+      expect(
+        envSchema.safeParse({ ...required, STORAGE_BUCKET: bad }).success,
+        bad,
+      ).toBe(false);
+    }
+    expect(
+      envSchema.safeParse({ ...required, STORAGE_BUCKET: 'my-images.v2' })
+        .success,
+    ).toBe(true);
+  });
+
+  it('parses STORAGE_FORCE_PATH_STYLE from a string boolean', () => {
+    expect(
+      envSchema.parse({ ...required, STORAGE_FORCE_PATH_STYLE: 'false' })
+        .STORAGE_FORCE_PATH_STYLE,
     ).toBe(false);
   });
 

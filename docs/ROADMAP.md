@@ -9,8 +9,8 @@ Sub-stages are proposed where a stage is large. The roadmap is a proposal that c
 | 0 | Architecture and foundations | Complete |
 | 1 | Project scaffolding and tooling | Complete |
 | 2 | Database foundation | Complete |
-| 3 | Authentication and roles | In review |
-| 4 | Storage and upload | Not started |
+| 3 | Authentication and roles | Complete |
+| 4 | Storage and upload | In review |
 | 5 | Retrieval, listing, and admin | Not started |
 | 6 | Transformation engine | Not started |
 | 7 | Async processing | Not started |
@@ -29,7 +29,7 @@ Stack, infrastructure, and behavior decisions; architecture; data model; API sur
 - NestJS project with Fastify, strict TypeScript, ESLint and Prettier, pnpm
 - Structure for the API and worker entry points
 - Zod-validated configuration
-- Docker Compose (PostgreSQL, Redis; object storage emulator pending, D-043)
+- Docker Compose (PostgreSQL, Redis; SeaweedFS for object storage, D-065)
 - GitHub Actions CI (lint, build, test)
 - `nestjs-pino` logging, health check endpoint, Swagger setup
 - Test setup (Vitest; Testcontainers moves to Stage 2, when a database exists)
@@ -54,10 +54,12 @@ Stack, infrastructure, and behavior decisions; architecture; data model; API sur
 
 ## Stage 4: Storage and upload
 
-- Storage module (S3-compatible client for R2 and MinIO)
-- Multipart upload with 10 MB limit
-- Content-based validation, allowed formats, pixel ceiling
-- Image record creation and metadata extraction
+- Storage module: S3-compatible client for R2 (SeaweedFS locally and in tests), `STORAGE_*` settings, readiness check
+- `POST /api/v1/images`: multipart upload, 10 MiB limit, no queue
+- Content-based validation: format allowlist, 50 megapixel ceiling, full decode check
+- Image record creation: sanitized filename, as-displayed dimensions, SHA-256 checksum
+- Consistency: stored object removed if the record cannot be saved
+- E2E tests against real PostgreSQL and SeaweedFS containers
 
 ## Stage 5: Retrieval, listing, and admin
 

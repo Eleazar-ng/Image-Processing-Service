@@ -48,6 +48,18 @@ export class ProblemDetailsFilter implements ExceptionFilter {
     httpAdapter.reply(reply, problem, problem.status);
   }
 
+  private clientErrorStatus(exception: unknown): number | null {
+    if (typeof exception !== 'object' || exception === null) {
+      return null;
+    }
+    const { statusCode } = exception as { statusCode?: unknown };
+    return typeof statusCode === 'number' &&
+      statusCode >= 400 &&
+      statusCode < 500
+      ? statusCode
+      : null;
+  }
+
   private toProblem(
     exception: unknown,
     request: FastifyRequest,
@@ -94,6 +106,20 @@ export class ProblemDetailsFilter implements ExceptionFilter {
         }
       }
       return problem;
+    }
+
+    // Client errors raised by the framework itself (for example Fastify
+    // rejecting an unsupported content type) carry their own 4xx status.
+    const clientStatus = this.clientErrorStatus(exception);
+    if (clientStatus) {
+      return {
+        type: 'about:blank',
+        title: STATUS_CODES[clientStatus] ?? 'Error',
+        status: clientStatus,
+        detail: (exception as { message?: string }).message,
+        instance,
+        requestId,
+      };
     }
 
     // Never leak internals for unexpected errors.

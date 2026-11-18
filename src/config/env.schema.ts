@@ -13,8 +13,8 @@ export const LOG_LEVELS = [
 /**
  * Environment contract for the application. Validated once at startup:
  * the app refuses to boot when a variable is missing or malformed.
- * Variables for later stages (Redis, storage) are added here as the code
- * that needs them is introduced.
+ * Variables for later stages (Redis) are added here as the code that needs
+ * them is introduced.
  */
 export const envSchema = z.object({
   NODE_ENV: z
@@ -33,6 +33,19 @@ export const envSchema = z.object({
     .int()
     .positive()
     .default(604_800),
+  // S3-compatible object storage: Cloudflare R2 in production, SeaweedFS locally.
+  STORAGE_ENDPOINT: z.url(),
+  STORAGE_REGION: z.string().min(1).default('auto'),
+  STORAGE_BUCKET: z
+    .string()
+    .regex(
+      /^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$/,
+      'STORAGE_BUCKET must be a valid bucket name',
+    ),
+  STORAGE_ACCESS_KEY_ID: z.string().min(1),
+  STORAGE_SECRET_ACCESS_KEY: z.string().min(1),
+  // Path-style addressing works with R2 and with local emulators.
+  STORAGE_FORCE_PATH_STYLE: z.stringbool().default(true),
   DATABASE_URL: z
     .string()
     .regex(

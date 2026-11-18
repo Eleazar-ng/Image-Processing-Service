@@ -8,6 +8,7 @@ import {
   FastifyAdapter,
   type NestFastifyApplication,
 } from '@nestjs/platform-fastify';
+import fastifyMultipart from '@fastify/multipart';
 import type { FastifyInstance } from 'fastify';
 import { Logger } from 'nestjs-pino';
 import {
@@ -16,6 +17,7 @@ import {
   resolveRequestId,
 } from './common/logging/request-id.js';
 import { setupSwagger } from './common/swagger/setup-swagger.js';
+import { MAX_UPLOAD_BYTES } from './images/upload.constants.js';
 import type { Env } from './config/env.schema.js';
 import { IncomingMessage } from 'node:http';
 
@@ -38,7 +40,7 @@ export function createFastifyAdapter(): FastifyAdapter {
  * Shared application configuration. Used by the real bootstrap (main.ts)
  * and by e2e tests so tests exercise the same setup as production.
  */
-export function configureApp(app: NestFastifyApplication): void {
+export async function configureApp(app: NestFastifyApplication): Promise<void> {
   const config = app.get<ConfigService<Env, true>>(ConfigService);
 
   app.useLogger(app.get(Logger));
@@ -62,6 +64,12 @@ export function configureApp(app: NestFastifyApplication): void {
   app.enableVersioning({
     type: VersioningType.URI,
     defaultVersion: DEFAULT_API_VERSION,
+  });
+
+  // Multipart parsing for uploads. The size limit is enforced while streaming,
+  // so an oversized file is rejected without being read in full.
+  await app.register(fastifyMultipart, {
+    limits: { fileSize: MAX_UPLOAD_BYTES, files: 1, fields: 10, parts: 11 },
   });
 
   // Validates request input against the Zod schemas attached to route decorators.

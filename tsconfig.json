@@ -20,5 +20,5 @@
     "strictPropertyInitialization": false,
     "types": ["vitest/globals", "node"]
   },
-  "include": ["src/**/*", "test/**/*", "prisma/**/*", "*.ts"]
+  "include": ["src/**/*", "test/**/*", "prisma/**/*", "scripts/**/*", "*.ts"]
 }

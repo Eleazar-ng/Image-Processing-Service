@@ -14,7 +14,7 @@ describe('App (e2e)', () => {
     app = moduleRef.createNestApplication<NestFastifyApplication>(
       createFastifyAdapter(),
     );
-    configureApp(app);
+    await configureApp(app);
 
     await app.init();
     await app.getHttpAdapter().getInstance().ready();
@@ -34,13 +34,13 @@ describe('App (e2e)', () => {
   });
 
   describe('GET /health/ready', () => {
-    it('reports the database as up', async () => {
+    it('reports the database and storage as up', async () => {
       const res = await app.inject({ method: 'GET', url: '/health/ready' });
 
       expect(res.statusCode).toBe(200);
       expect(res.json()).toMatchObject({
         status: 'ok',
-        info: { database: { status: 'up' } },
+        info: { database: { status: 'up' }, storage: { status: 'up' } },
       });
     });
   });

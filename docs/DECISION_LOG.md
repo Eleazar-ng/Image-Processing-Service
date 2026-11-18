@@ -22,7 +22,7 @@ This is the running reference for every feature and implementation decision made
 
 | ID | Decision | Alternatives considered | Status | Date |
 |---|---|---|---|---|
-| D-007 | **Cloudflare R2** for object storage, accessed through the S3-compatible API (`@aws-sdk/client-s3`). *Amended in Stage 1:* MinIO is no longer viable as the local stand-in (its community repository was archived in April 2026 and it stopped publishing Docker images in October 2025); the replacement is pending, see D-043. | AWS S3, Google Cloud Storage | Accepted (local stand-in amended) | 2026-11-01 |
+| D-007 | **Cloudflare R2** for object storage, accessed through the S3-compatible API (`@aws-sdk/client-s3`). *Amended in Stage 1:* MinIO is no longer viable as the local stand-in (its community repository was archived in April 2026 and it stopped publishing Docker images in October 2025); the replacement is SeaweedFS (D-043, D-065). | AWS S3, Google Cloud Storage | Accepted (local stand-in amended) | 2026-11-01 |
 | D-008 | **Uploads go through the API** first (server validates, then stores). Presigned direct-to-storage uploads are added later. | Presigned uploads from the start | Accepted | 2026-11-01 |
 | D-009 | **Hybrid transformation processing**: cheap operations run inline, heavy ones are queued. Must be efficient and reliable. | Fully synchronous, fully asynchronous | Accepted | 2026-11-01 |
 | D-010 | **Redis** is shared infrastructure for the queue backend, cache lookups and locks, and rate-limit counters | In-memory only (breaks with multiple instances) | Accepted | 2026-11-01 |
@@ -46,7 +46,7 @@ This is the running reference for every feature and implementation decision made
 | D-018 | **Single repository, modular monolith** with two entry points: an API app and a worker app sharing the same modules | Separate services or repositories | Accepted | 2026-11-01 |
 | D-019 | **Validation uses both class-validator and Zod, with a clear split.** class-validator for HTTP DTOs (request bodies, query, params). Zod for environment/config validation and for transformation operation and queue job payload schemas. | One library only | **Superseded by D-034** | 2026-11-01 |
 | D-020 | **Jest** with unit tests plus e2e/integration tests against real services through **Testcontainers** | Vitest, mock-only testing | **Superseded by D-035** (runner changed; Testcontainers approach retained) | 2026-11-01 |
-| D-021 | **Docker and Docker Compose** locally (PostgreSQL, Redis; object storage pending, see D-043). **GitHub Actions** for CI. | Other CI platforms | Accepted | 2026-11-01 |
+| D-021 | **Docker and Docker Compose** locally (PostgreSQL, Redis, SeaweedFS for object storage, see D-065). **GitHub Actions** for CI. | Other CI platforms | Accepted | 2026-11-01 |
 | D-022 | **OpenAPI/Swagger** documentation through `@nestjs/swagger` | | Accepted | 2026-11-01 |
 | D-023 | **`nestjs-pino`** structured logging, correlation IDs, and `@nestjs/terminus` health checks. OpenTelemetry (metrics and tracing) is deferred. | | Accepted | 2026-11-01 |
 | D-024 | **No hosting planned yet.** Design for portability and keep services stateless where possible so they can scale horizontally later. | | Accepted | 2026-11-01 |
@@ -84,7 +84,7 @@ Made on 2026-11-01 after NestJS 12 (released 2026-08-27) and Node 26 LTS changed
 | D-040 | **Husky + lint-staged** pre-commit hook. Commitlint (enforcing Conventional Commits) is not yet confirmed. | | Accepted (commitlint added by D-051) | 2026-11-01 |
 | D-041 | **Multi-stage production Dockerfile**: one image runs the API (default) or the worker (`node dist/worker.js`). Node 25+ no longer bundles Corepack, so pnpm is installed with npm. | Defer the Dockerfile | Accepted | 2026-11-01 |
 | D-042 | **Dependabot** for npm, GitHub Actions, and Docker, grouped for Nest packages and dev dependencies | Renovate, none | Accepted | 2026-11-01 |
-| D-043 | **Local S3-compatible storage emulator: pending.** MinIO is no longer viable. Candidates: SeaweedFS (Apache-2.0, active), Garage (AGPL), S3Proxy (test-oriented), or a dedicated R2 dev bucket. Must be decided before Stage 4; it also affects integration tests. | | **Open** | |
+| D-043 | **Local S3-compatible storage emulator: resolved by D-065** (SeaweedFS). MinIO stopped being viable when its community repository was archived. | RustFS, Garage, S3Proxy, a dedicated R2 dev bucket | **Resolved** | 2026-11-12 |
 
 ## 5c. Stage 2 decisions (database foundation)
 
@@ -121,6 +121,24 @@ Approved on 2026-11-10 by accepting the recommendations as a group.
 | D-063 | **Admin seeding:** `pnpm db:seed` reads `ADMIN_EMAIL` and `ADMIN_PASSWORD` from the environment (validated against the password policy; never part of the application's own env schema, never committed). It creates the admin; an existing admin is a no-op and its password is never reset; an existing non-admin account with that email is an error instead of a silent promotion (*Claude's choice, to confirm*). | Hard-coded defaults, silent promotion | Accepted (error-on-existing-user to confirm) | 2026-11-10 |
 | D-064 | **Stable error codes** are carried in Problem Details `errorCode`: `EMAIL_TAKEN`, `INVALID_CREDENTIALS`, `INVALID_REFRESH_TOKEN`, `UNAUTHENTICATED`, `INVALID_ACCESS_TOKEN`, `FORBIDDEN`. Validation failures surface in `errors`; the filter accepts the array under `errors`, `issues`, or as an array `message`, because the exact shape produced by `StandardSchemaValidationPipe` is confirmed by the e2e tests on first run. | | Accepted | 2026-11-10 |
 
+## 5e. Stage 4 decisions (storage and upload)
+
+Approved on 2026-11-12 by accepting the recommendations as a group.
+
+| ID | Decision | Alternatives considered | Status | Date |
+|---|---|---|---|---|
+| D-065 | **SeaweedFS** is the local S3 stand-in for R2 (resolves D-043), used by Docker Compose and by the Testcontainers e2e setup. It runs in single-process mode, serves S3 on port 8333, and its `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, and `S3_BUCKET` variables set the credentials and pre-create the bucket. The e2e setup also creates the bucket itself with retries, because the port opens before the bucket exists. The image tag is `latest` until a tested release is pinned. | RustFS, Garage, S3Proxy, a dedicated R2 dev bucket | Accepted | 2026-11-12 |
+| D-066 | **Neutral `STORAGE_*` settings:** `STORAGE_ENDPOINT`, `STORAGE_REGION` (default `auto`), `STORAGE_BUCKET`, `STORAGE_ACCESS_KEY_ID`, `STORAGE_SECRET_ACCESS_KEY`, `STORAGE_FORCE_PATH_STYLE` (default `true`). The S3 client sets `requestChecksumCalculation` and `responseChecksumValidation` to `WHEN_REQUIRED`, because R2 rejects the extra checksum headers newer SDK versions add by default. | `S3_*` or `R2_*` names | Accepted | 2026-11-12 |
+| D-067 | **Key layout:** `users/{userId}/images/{uuid}.{ext}`, built only from the user ID, a random UUID, and an extension from the detected format. The client's filename is never part of a key. | Content-addressed keys, flat keys | Accepted | 2026-11-12 |
+| D-068 | **Upload mechanics:** `POST /api/v1/images`, multipart, one file in the form field `file`, parsed by `@fastify/multipart` (registered in `configureApp`, which is now async). The limit (10 MiB, read from D-026's "10 MB" as 10 x 1024 x 1024 bytes, *to confirm*) is enforced while streaming. The file is buffered in memory, then stored. **No queue is involved in upload**: it completes inline (reaffirms D-008); the queue is for transformations (D-009, D-011). | Streaming straight to storage | Accepted | 2026-11-12 |
+| D-069 | **Consistency:** the object is written first and deleted again if the database record cannot be saved; a failed compensating delete is logged and never masks the original error. A crash between the two steps can orphan an object, removed later by a cleanup job. A foreign-key violation (account deleted mid-request) is reported as 401. | Database first with a pending status (needs a schema change) | Accepted | 2026-11-12 |
+| D-070 | **Validation by content:** Sharp reads the metadata; the format must be on the allowlist (JPEG, PNG, WebP, AVIF, GIF, TIFF; AVIF is HEIF with AV1, and HEVC/HEIC is rejected); the pixel count must be at most 50 million; and the image must decode fully (`failOn: 'error'`) so truncated or corrupt files are rejected before storage. Width and height are stored **as displayed** (EXIF orientations 5 to 8 swap them). The SHA-256 checksum covers the original bytes. Sharp errors are classified into 415 or 422 by their message text, which is a heuristic covered by tests. | Raw dimensions | Accepted | 2026-11-12 |
+| D-071 | **Upload details:** the stored `originalFilename` is sanitized (directory parts, control and bidi-override characters removed, 255-character cap that keeps the extension, fallback `upload`); duplicates are allowed and get separate rows and keys; responses never include `storageKey` or `ownerId`. | Deduplicate by checksum | Accepted | 2026-11-12 |
+| D-072 | **Error codes:** `400 MISSING_FILE`, `413 FILE_TOO_LARGE`, `415 UNSUPPORTED_IMAGE_FORMAT`, `422 INVALID_IMAGE`. The Problem Details filter now also maps 4xx errors raised by the framework itself (for example Fastify rejecting an unsupported request content type) instead of turning them into 500s. | | Accepted | 2026-11-12 |
+| D-073 | **`/health/ready` also checks storage** (a `HeadBucket` call with a 2 second timeout) | Add it later | Accepted | 2026-11-12 |
+| D-074 | **Tests use real services:** one PostgreSQL and one SeaweedFS container per e2e run, real uploads, exact checks of bucket contents. Test images are generated with Sharp, so no binary fixtures are committed. | In-memory fake storage | Accepted | 2026-11-12 |
+| D-075 | **Storage diagnostics script** `pnpm storage:check` (`scripts/check-storage.ts`): validates the `STORAGE_*` settings, then TCP, HTTP, signed bucket access, and a write/read/delete round trip, stopping at the first failure with a hint. Flags `--create-bucket` and `--timeout=`. Exit code 1 on failure. Added on request after Stage 4's first delivery. | Manual curl and docker commands only | Accepted | 2026-11-12 |
+
 ## 6. Deferred and backlog items
 
 - GET-style on-the-fly transformations (D-017, later phase)
@@ -135,7 +153,7 @@ Approved on 2026-11-10 by accepting the recommendations as a group.
 - Deployment target and infrastructure (D-024)
 - Security headers (Helmet) and CORS policy
 - Trusted-proxy setting for client IP detection (needed with rate limiting, Stage 8)
-- Redis and storage checks for `/health/ready` (as those dependencies are added)
+- Redis check for `/health/ready` (when Redis is added)
 - Nest 12 `@nestjs/observe` SDK versus pino plus OpenTelemetry (D-023 stands for now)
 - Cleanup job for soft-deleted images and their R2 objects (D-028)
 - Cleanup of expired and revoked refresh tokens (fits the Stage 7 cleanup job)
@@ -146,7 +164,10 @@ Approved on 2026-11-10 by accepting the recommendations as a group.
 
 ## 7. Open items to decide in the relevant stage
 
-- Local object storage emulator (D-043), before Stage 4
+- Pin the SeaweedFS image tag (Compose and tests use `latest` until a tested release is chosen, D-065)
+- Cleanup of orphaned storage objects (an object whose record could not be saved after a crash, D-069); fits the Stage 7 cleanup job
+- Per-user upload quotas (not requested; revisit if needed)
+- Rate limiting on upload (Stage 8)
 - How migrations are applied in deployment (the Prisma CLI is a dev dependency, so a deploy step or image variant is needed once hosting is planned)
 - Whether the installed Prisma 7 release expects a differently named config file (D-044); verify with `pnpm prisma init`
 - Pin the pnpm version (add a `packageManager` field or set it in CI and the Dockerfile)
