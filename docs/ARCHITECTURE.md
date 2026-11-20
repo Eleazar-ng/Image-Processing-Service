@@ -18,7 +18,7 @@ A backend service where authenticated users upload images, apply transformations
 
 ### API app modules
 
-Auth, Users, Images, Transformations, Storage, Jobs, Cache, Health, Config. An Admin module is added for the `/admin/*` routes (D-031).
+Auth, Users, Images, Transformations, Storage, Jobs, Cache, Health, Config. Image routes live in the Images module, with the admin routes beside them (D-031, D-082) and an Audit module for admin audit events (D-083).
 
 ## 2. Key flows
 
@@ -32,6 +32,13 @@ No queue is involved: the request completes inline.
 4. The original is stored untouched in R2 under `users/{userId}/images/{uuid}.{ext}`.
 5. An `Image` record is saved with the sanitized filename, detected MIME type, size, as-displayed dimensions, and SHA-256 checksum. If this fails, the stored object is deleted again.
 6. The metadata is returned (never the storage key or owner). Raw EXIF is not exposed (D-029).
+
+### Retrieval and deletion (D-076 to D-081)
+
+1. **List:** the guard authenticates the caller; the query is validated (`limit` 1 to 100, optional `cursor`). Rows are read newest first with one extra row to detect another page, scoped to the caller's undeleted images. The cursor encodes the last row's (`createdAt`, `id`), so new uploads never shift a page.
+2. **File:** the caller's image is looked up (a miss is `404`). If `If-None-Match` matches the checksum ETag the answer is `304` and storage is not touched. Otherwise the original is streamed from storage with `ETag`, `Cache-Control: private, no-cache`, `nosniff`, and `Content-Disposition` (`inline`, or `attachment` for `?download=true`) named from the sanitized original with its extension corrected.
+3. **Delete:** one conditional update sets `deletedAt`; the stored object stays until the cleanup job.
+4. **Admin:** the same operations across all users, behind the `ADMIN` role, with deleted images reviewable and each action audited.
 
 ### Transform (D-009, D-016, D-030)
 
@@ -68,7 +75,7 @@ All IDs are cuid (D-025).
 
 Notes:
 - `deletedAt` implements soft delete (D-028). Variants of a soft-deleted image are treated as deleted and removed by the cleanup job.
-- Whether admin actions get a dedicated audit table is still open (see the Decision Log).
+- Admin actions are audited as structured log events, not in a table (D-083).
 - All timestamps are `timestamptz(3)` (D-048). Deleting a `User` cascades to their `RefreshToken`s but is blocked while they own `Image`s; deleting an `Image` cascades to its `ImageVariant`s (D-046).
 - The schema lives in `prisma/schema.prisma`; the generated client is not committed (D-045).
 
@@ -85,10 +92,12 @@ All other routes require an access token unless explicitly public. Health probes
 
 ### Images (owner-scoped)
 - `POST /images`: multipart upload, field `file` (implemented)
-- `GET /images`: paginated list with metadata
+- `GET /images`: your images, newest first, cursor-paginated (`limit`, `cursor`; returns `{ items, nextCursor }`)
 - `GET /images/:id`: metadata
-- `GET /images/:id/file`: retrieve the original
-- `DELETE /images/:id`: soft delete
+- `GET /images/:id/file`: the original, streamed; `?download=true` for an attachment; ETag and 304 support
+- `DELETE /images/:id`: soft delete (204, then 404)
+
+Another user's, unknown, and deleted images all answer `404 IMAGE_NOT_FOUND` (D-080).
 
 ### Transformations (owner-scoped)
 - `POST /images/:id/transform`
@@ -97,7 +106,12 @@ All other routes require an access token unless explicitly public. Health probes
 - `GET /variants/:variantId/file`
 
 ### Admin (role `ADMIN`, D-031)
-- `/admin/*` routes to list and view all images and soft-delete them. Exact routes to be defined in Stage 5.
+- `GET /admin/images`: all images, filters `ownerId` and `includeDeleted`
+- `GET /admin/images/:id`: any image, including deleted ones; adds `ownerId` and `deletedAt`
+- `GET /admin/images/:id/file`: the original; `?download=true` for an attachment
+- `DELETE /admin/images/:id`: soft delete
+
+Every successful admin action is written to the log as an `audit` event (D-083).
 
 ### Operations
 - `GET /health/live`: liveness. `GET /health/ready`: readiness, checks PostgreSQL (Redis and storage join later). Both are unversioned and outside the `/api` prefix (D-038, D-049).

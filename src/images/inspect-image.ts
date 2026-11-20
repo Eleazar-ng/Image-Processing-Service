@@ -17,6 +17,12 @@ const FORMATS: Record<ImageFormat, { mimeType: string; extension: string }> = {
   tiff: { mimeType: 'image/tiff', extension: 'tiff' },
 };
 
+/** The canonical file extension for a stored MIME type, if it is one we accept. */
+export function extensionForMimeType(mimeType: string): string | undefined {
+  return Object.values(FORMATS).find((format) => format.mimeType === mimeType)
+    ?.extension;
+}
+
 export interface ImageInfo {
   format: ImageFormat;
   mimeType: string;

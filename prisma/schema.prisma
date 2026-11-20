@@ -74,6 +74,8 @@ model Image {
   variants ImageVariant[]
 
   @@index([ownerId, createdAt])
+  // Serves the admin list, which orders by (createdAt, id) across all owners.
+  @@index([createdAt, id])
   @@index([deletedAt])
 }
 

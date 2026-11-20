@@ -135,6 +135,27 @@ nc -zv localhost 8333                     # is the port open?
 curl -i http://localhost:8333             # any HTTP answer (even 403) means it is reachable
 ```
 
+### Browsing, downloading, and deleting
+
+```bash
+# Your images, newest first (20 per page; follow nextCursor for more)
+curl -H "authorization: Bearer $TOKEN" "http://localhost:3000/api/v1/images?limit=20"
+curl -H "authorization: Bearer $TOKEN" "http://localhost:3000/api/v1/images?cursor=<nextCursor>"
+
+# Metadata, the original file inline, or as a download
+curl -H "authorization: Bearer $TOKEN" http://localhost:3000/api/v1/images/<id>
+curl -H "authorization: Bearer $TOKEN" http://localhost:3000/api/v1/images/<id>/file -o photo
+curl -OJ -H "authorization: Bearer $TOKEN" "http://localhost:3000/api/v1/images/<id>/file?download=true"
+
+# Delete (soft delete; 204, then 404)
+curl -X DELETE -H "authorization: Bearer $TOKEN" http://localhost:3000/api/v1/images/<id>
+```
+
+Another user's image answers 404, exactly like an unknown ID. Admins (see
+Authentication) can use the same operations on every user's images under
+`/api/v1/admin/images`, with `?ownerId=` and `?includeDeleted=true` filters on the
+list. Each successful admin action is written to the log as an `audit` event.
+
 ## Database workflow
 
 The Prisma client is generated code and is not committed. Run `pnpm db:generate`
@@ -188,7 +209,8 @@ src/
   common/              Logging, error handling, Swagger setup
   health/              Liveness and readiness endpoints
   storage/             S3-compatible storage service (R2 and emulators)
-  images/              Upload: validation, filename and key handling, endpoint
+  images/              Upload, listing, retrieval, delete, and admin routes
+  audit/               Audit events for admin actions
   auth/                Registration, login, tokens, guards, decorators
   users/               User lookup and creation
   prisma/              PrismaService and PrismaModule
@@ -201,7 +223,7 @@ test/
 docs/                  Decision log, architecture, roadmap
 ```
 
-## Endpoints (Stage 4)
+## Endpoints (Stage 5)
 
 | Method | Path                    | Auth   | Description                                      |
 | ------ | ----------------------- | ------ | ------------------------------------------------ |
@@ -213,6 +235,14 @@ docs/                  Decision log, architecture, roadmap
 | POST   | `/api/v1/auth/logout`   | Public | End the session that owns a refresh token        |
 | GET    | `/api/v1/auth/me`       | Bearer | The signed-in user                               |
 | POST   | `/api/v1/images`        | Bearer | Upload an image (multipart, field `file`)        |
+| GET    | `/api/v1/images`        | Bearer | List your images (cursor-paginated)              |
+| GET    | `/api/v1/images/:id`    | Bearer | Metadata of one of your images                   |
+| GET    | `/api/v1/images/:id/file` | Bearer | The original (`?download=true` for attachment) |
+| DELETE | `/api/v1/images/:id`    | Bearer | Delete one of your images (soft delete)          |
+| GET    | `/api/v1/admin/images`  | Admin  | List all images (`ownerId`, `includeDeleted`)    |
+| GET    | `/api/v1/admin/images/:id` | Admin | Any image, including deleted ones              |
+| GET    | `/api/v1/admin/images/:id/file` | Admin | Any original (`?download=true` supported) |
+| DELETE | `/api/v1/admin/images/:id` | Admin | Delete any image (soft delete)                |
 
 Errors use RFC 9457 `application/problem+json` with a stable `errorCode`.
 

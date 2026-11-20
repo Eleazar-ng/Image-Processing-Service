@@ -10,8 +10,8 @@ Sub-stages are proposed where a stage is large. The roadmap is a proposal that c
 | 1 | Project scaffolding and tooling | Complete |
 | 2 | Database foundation | Complete |
 | 3 | Authentication and roles | Complete |
-| 4 | Storage and upload | In review |
-| 5 | Retrieval, listing, and admin | Not started |
+| 4 | Storage and upload | Complete |
+| 5 | Retrieval, listing, and admin | In review |
 | 6 | Transformation engine | Not started |
 | 7 | Async processing | Not started |
 | 8 | Caching and rate limiting | Not started |
@@ -63,10 +63,12 @@ Stack, infrastructure, and behavior decisions; architecture; data model; API sur
 
 ## Stage 5: Retrieval, listing, and admin
 
-- List (paginated), get metadata, retrieve original, soft delete
-- Owner-scoped access rules
-- Admin routes: view all images, soft-delete
-- Decide: pagination style
+- `GET /api/v1/images` (cursor-paginated), `GET /images/:id`, `GET /images/:id/file` (streamed, ETag and 304, `?download=true`), `DELETE /images/:id` (soft delete)
+- Owner-scoped access: other users', unknown, and deleted images answer 404
+- Admin routes under `/api/v1/admin/images`: list with filters, view, download, soft-delete
+- Admin audit events through structured logs
+- New `Image(createdAt, id)` index (one migration)
+- E2E tests for isolation, pagination, caching, download headers, and admin access
 
 ## Stage 6: Transformation engine
 

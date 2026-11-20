@@ -24,3 +24,17 @@ export function toImageResponse(image: Image): ImageResponse {
     createdAt: image.createdAt,
   };
 }
+
+/** What admins see: the owner's fields plus ownership and deletion state. */
+export interface AdminImageResponse extends ImageResponse {
+  ownerId: string;
+  deletedAt: Date | null;
+}
+
+export function toAdminImageResponse(image: Image): AdminImageResponse {
+  return {
+    ...toImageResponse(image),
+    ownerId: image.ownerId,
+    deletedAt: image.deletedAt,
+  };
+}
