@@ -63,7 +63,7 @@ This is the running reference for every feature and implementation decision made
 | D-030 | **Hybrid routing rule (starting point).** Run inline when the source is small (about 2 MB or less), the operation chain is short (about 3 operations or fewer), and the output is not a slow encoder such as AVIF. Otherwise queue. Cap concurrent inline Sharp operations; overflow goes to the queue. All thresholds are configurable through environment variables and tuned by benchmarking in Stages 6 and 7. | | Accepted | 2026-11-01 |
 | D-031 | **Visibility and roles.** Images are private to their owner. Admins can view all images. A `role` field on User (`USER` or `ADMIN`). Admin accounts are created **only through a seed script**, never through public registration. Admin capabilities are view and soft-delete (no transform, no impersonation), on separate `/admin/*` routes, with admin actions logged. | Loosening the normal endpoints for admin access | Accepted | 2026-11-01 |
 
-> **To confirm:** the admin capabilities, route style, and logging in D-031 came from Claude's recommendation, which was accepted as a group. The seed-script approach was stated explicitly. Raise any correction before Stage 5, when the admin routes are built.
+> **To confirm:** the admin capabilities, route style, and logging in D-031 came from Claude's recommendation, which was accepted as a group. The seed-script approach was stated explicitly. The routes, extra fields, and audit approach were then approved in Stage 5 (D-082, D-083).
 
 ---
 
@@ -139,6 +139,24 @@ Approved on 2026-11-12 by accepting the recommendations as a group.
 | D-074 | **Tests use real services:** one PostgreSQL and one SeaweedFS container per e2e run, real uploads, exact checks of bucket contents. Test images are generated with Sharp, so no binary fixtures are committed. | In-memory fake storage | Accepted | 2026-11-12 |
 | D-075 | **Storage diagnostics script** `pnpm storage:check` (`scripts/check-storage.ts`): validates the `STORAGE_*` settings, then TCP, HTTP, signed bucket access, and a write/read/delete round trip, stopping at the first failure with a hint. Flags `--create-bucket` and `--timeout=`. Exit code 1 on failure. Added on request after Stage 4's first delivery. | Manual curl and docker commands only | Accepted | 2026-11-12 |
 
+## 5f. Stage 5 decisions (retrieval, listing, delete, and admin)
+
+Approved on 2026-11-18 by accepting the recommendations as a group, plus a requested download option.
+
+| ID | Decision | Alternatives considered | Status | Date |
+|---|---|---|---|---|
+| D-076 | **Cursor pagination**, newest first, ordered by (`createdAt`, `id`) descending so ties never skip or repeat a row. `limit` defaults to 20 (1 to 100). The response is `{ items, nextCursor }`, with `nextCursor` null on the last page. The cursor is an opaque base64url token that is validated on use (`400 INVALID_CURSOR`). No total count. | Offset pagination | Accepted | 2026-11-18 |
+| D-077 | **Originals are streamed through the API** from `GET /api/v1/images/:id/file`, which keeps access control in one place and the bucket private. The route sends the response itself (`@Res()`). Presigned redirects wait for a CDN. | Redirect to presigned storage URLs | Accepted | 2026-11-18 |
+| D-078 | **File headers:** `ETag` is the quoted SHA-256 checksum; `Cache-Control: private, no-cache`, so every request is authorized and a client that already has the bytes gets `304 Not Modified` without a storage read (weak validators and `*` are honored); `X-Content-Type-Options: nosniff`; `Content-Disposition` with an ASCII fallback and an RFC 5987 `filename*`. | Long-lived caching | Accepted | 2026-11-18 |
+| D-079 | **Download option:** `?download=true` (or `false`, the default) on both the owner and admin file routes switches `Content-Disposition` between `inline` and `attachment`. Any other value is a 400. The filename is the sanitized original with its extension corrected to the real format (a PNG uploaded as `holiday.jpg` downloads as `holiday.png`; a name without a known image extension gets the real one appended). | | Accepted | 2026-11-18 |
+| D-080 | **Unknown, deleted, and other users' images all answer `404 IMAGE_NOT_FOUND`**, so a response never confirms that someone else's image ID exists. A matching `If-None-Match` does not bypass this check. | `403` for other users' images | Accepted | 2026-11-18 |
+| D-081 | **Soft delete** is one conditional update (`deletedAt` set where the image is the caller's and not yet deleted): `204` the first time, `404` afterwards. The stored object and any variants remain until the Stage 7 cleanup job (D-028). | Always `204` | Accepted | 2026-11-18 |
+| D-082 | **Admin routes** (role `ADMIN`, class-level): `GET /api/v1/admin/images` (filters `ownerId` and `includeDeleted`, default excludes deleted), `GET /admin/images/:id`, `GET /admin/images/:id/file`, `DELETE /admin/images/:id`. Responses add `ownerId` and `deletedAt` but never the storage key. *Claude's detail, to confirm:* admin get and file download ignore deletion state, so a soft-deleted image stays reviewable until the cleanup job removes it. | Admins limited to undeleted images | Accepted (deleted-image access to confirm) | 2026-11-18 |
+| D-083 | **Admin audit trail as structured log events** (resolves the open item). Listing, viewing, downloading, and deleting each log an `audit` object with the action, actor ID and role, image ID, owner ID, and details. Only successful actions are recorded; refused attempts and lookups of missing images are not (the first are visible in ordinary request logs). | A dedicated audit table | Accepted | 2026-11-18 |
+| D-084 | **New index `Image(createdAt, id)`** for the admin list, which orders across all owners. This needs a migration (`pnpm db:migrate:dev --name add_image_created_at_index`). | No index | Accepted | 2026-11-18 |
+| D-085 | **The list takes only `limit` and `cursor`** (admin adds `ownerId` and `includeDeleted`). No filtering or sort options. | Filter by type or filename | Accepted | 2026-11-18 |
+| D-086 | **Error codes:** `404 IMAGE_NOT_FOUND`, `400 INVALID_CURSOR`; query and parameter validation errors reuse the Problem Details `errors` array. | | Accepted | 2026-11-18 |
+
 ## 6. Deferred and backlog items
 
 - GET-style on-the-fly transformations (D-017, later phase)
@@ -157,6 +175,11 @@ Approved on 2026-11-12 by accepting the recommendations as a group.
 - Nest 12 `@nestjs/observe` SDK versus pino plus OpenTelemetry (D-023 stands for now)
 - Cleanup job for soft-deleted images and their R2 objects (D-028)
 - Cleanup of expired and revoked refresh tokens (fits the Stage 7 cleanup job)
+- Queryable audit history through a dedicated table (D-083 uses log events; add a table if searchable history is needed)
+- List filters (by type, filename search) and sort options (D-085)
+- Redirect to presigned storage URLs, once a CDN is in place (D-077)
+- Range requests for file downloads (not needed at 10 MiB)
+- Retrieval in other formats (`GET` with transformation parameters, after Stage 6, D-017)
 - Absolute session lifetime cap (refresh tokens currently slide for as long as they are used, D-056)
 - `WWW-Authenticate: Bearer` header on 401 responses
 - Response serialization schemas (`StandardSchemaSerializerInterceptor`) as an extra guard against leaking fields
@@ -173,8 +196,6 @@ Approved on 2026-11-12 by accepting the recommendations as a group.
 - Pin the pnpm version (add a `packageManager` field or set it in CI and the Dockerfile)
 - Confirm on first run that `StandardSchemaValidationPipe` errors surface as the Problem Details `errors` array (the filter accepts `errors`, `issues`, or an array `message`; see D-064)
 - Exact rate-limit values per tier (Stage 8)
-- Pagination style for listings: cursor or offset (Stage 5)
 - Retention period before soft-deleted images are cleaned up (Stage 7)
-- How admin actions are recorded: logs only, or a dedicated audit table (Stage 5, when admin routes exist)
 - Final inline-versus-queue thresholds (Stages 6 and 7)
 - Initial set and ordering of transformations to implement (Stage 6)

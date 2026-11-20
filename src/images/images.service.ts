@@ -1,9 +1,18 @@
 import { Injectable, Logger, UnauthorizedException } from '@nestjs/common';
 import type { AuthUser } from '../auth/auth.types.js';
 import { isForeignKeyViolation } from '../common/database/prisma-errors.js';
+import {
+  type Page,
+  afterCursor,
+  decodeCursor,
+  toPage,
+} from '../common/pagination/cursor.js';
+import type { PaginationQuery } from '../common/pagination/pagination.schemas.js';
+import type { Image } from '../generated/prisma/client.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { StorageService } from '../storage/storage.service.js';
 import { sanitizeFilename } from './filename.js';
+import { imageNotFound } from './image-errors.js';
 import { type ImageResponse, toImageResponse } from './image-response.js';
 import { inspectImage } from './inspect-image.js';
 import { buildImageKey } from './storage-key.js';
@@ -57,6 +66,56 @@ export class ImagesService {
         });
       }
       throw error;
+    }
+  }
+
+  /** The caller's own images, newest first. Deleted images are excluded. */
+  async list(
+    owner: AuthUser,
+    { limit, cursor }: PaginationQuery,
+  ): Promise<Page<ImageResponse>> {
+    // Decode first so a bad cursor fails before any database work.
+    const after = cursor ? afterCursor(decodeCursor(cursor)) : {};
+
+    const rows = await this.prisma.image.findMany({
+      where: { ownerId: owner.id, deletedAt: null, ...after },
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+      take: limit + 1,
+    });
+
+    return toPage(rows, limit, toImageResponse);
+  }
+
+  async get(owner: AuthUser, id: string): Promise<ImageResponse> {
+    return toImageResponse(await this.findOwned(owner, id));
+  }
+
+  /**
+   * The image row, if it belongs to the caller and is not deleted. Everything
+   * else is "not found", so another user's IDs are never confirmed.
+   */
+  async findOwned(owner: AuthUser, id: string): Promise<Image> {
+    const image = await this.prisma.image.findFirst({
+      where: { id, ownerId: owner.id, deletedAt: null },
+    });
+    if (!image) {
+      throw imageNotFound();
+    }
+    return image;
+  }
+
+  /**
+   * Soft delete (D-028). One conditional update, so a double delete is
+   * answered "not found" the second time and nothing races. The stored object
+   * and any variants stay until the cleanup job removes them.
+   */
+  async softDelete(owner: AuthUser, id: string): Promise<void> {
+    const { count } = await this.prisma.image.updateMany({
+      where: { id, ownerId: owner.id, deletedAt: null },
+      data: { deletedAt: new Date() },
+    });
+    if (count === 0) {
+      throw imageNotFound();
     }
   }
 
